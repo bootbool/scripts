@@ -1,0 +1,43 @@
+#include <linux/skbuff.h>
+#include <linux/ip.h>
+#include <linux/in.h>
+#include <net/sock.h>
+
+
+BEGIN{
+
+@count=1;
+}
+
+kprobe:kfree_skb_reason
+{
+    // Get the pointer to the sk_buff (skb) from the first argument (arg0)
+    $skb = (struct sk_buff *)arg0;
+
+    // Check if the packet is an IPv4 packet
+    if ($skb->protocol == 0x0008) {  // ETH_P_IP (0x0800 in network byte order)
+
+        // Get the IP header from the skb
+        $iphdr_offset = $skb->network_header;
+        $head = $skb->head;
+        $iph = (struct iphdr *)($head + $iphdr_offset);
+        // Extract source and destination IP addresses
+        $saddr = ntop(AF_INET, $iph->saddr);
+        $daddr = ntop(AF_INET, $iph->daddr);
+        @count++;
+        if( $iph->protocol == 6 ){
+            $tcphdr_offset = $skb->transport_header;
+            $tcph = (struct tcphdr *)($head + $tcphdr_offset);
+            $source = (($tcph->source)>>8) |  (($tcph->source & 0xFF) << 8);
+            $dest = (($tcph->dest)>>8) |  (($tcph->dest & 0xFF) << 8);
+            printf("%d SRC IP: %s %d -> DEST IP: %s %d  %x\n",@count, $saddr, $source,  $daddr, $dest,  $iph->saddr);
+        }
+        else{
+
+            // Print the source and destination IP addresses
+            printf("SRC IP: %s -> DEST IP: %s  %x\n", $saddr, $daddr, $iph->saddr);
+        }
+
+            printf("%s\n", kstack);
+    }
+}
